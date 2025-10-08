@@ -1,13 +1,12 @@
-
 UNAME_M := $(shell uname -m)
 
 ifeq ($(UNAME_M),aarch64)
-PREFIX:=i686-linux-gnu-
-BOOTIMG:=/usr/local/grub/lib/grub/i386-pc/boot.img
-GRUBLOC:=/usr/local/grub/bin/
+PREFIX := i686-linux-gnu-
+BOOTIMG := /usr/local/grub/lib/grub/i386-pc/boot.img
+GRUBLOC := /usr/local/grub/bin/
 else
-PREFIX:=
-BOOTIMG:=/usr/lib/grub/i386-pc/boot.img
+PREFIX :=
+BOOTIMG := /usr/lib/grub/i386-pc/boot.img
 GRUBLOC :=
 endif
 
@@ -17,17 +16,21 @@ OBJDUMP := $(PREFIX)objdump
 OBJCOPY := $(PREFIX)objcopy
 SIZE := $(PREFIX)size
 CONFIGS := -DCONFIG_HEAP_SIZE=4096
-CFLAGS := -ffreestanding -mgeneral-regs-only -mno-mmx -m32 -march=i386 -fno-pie -fno-stack-protector -g3 -Wall 
+CFLAGS := -ffreestanding -mgeneral-regs-only -mno-mmx -m32 -march=i386 -fno-pie -fno-stack-protector -g3 -Wall
 
 ODIR = obj
 SDIR = src
 
 OBJS = \
+	start.o \
 	kernel_main.o \
-    terminal.o \
-    rprintf.o \
+	terminal.o \
+	rprintf.o \
+	interrupt.o \
+	keyboard.o \
+	scancodes.o 
 
-# Make sure to keep a blank line here after OBJS list
+# Keep a blank line after OBJS list
 
 OBJ = $(patsubst %,$(ODIR)/%,$(OBJS))
 
@@ -37,15 +40,14 @@ $(ODIR)/%.o: $(SDIR)/%.c
 $(ODIR)/%.o: $(SDIR)/%.s
 	$(CC) $(CFLAGS) -c -g -o $@ $^
 
-
 all: bin rootfs.img
 
 bin: obj $(OBJ)
-	$(LD) -melf_i386  obj/* -Tkernel.ld -o kernel
+	$(LD) -melf_i386 $(OBJ) -Tkernel.ld -o kernel
 	$(SIZE) kernel
 
 obj:
-	mkdir -p obj
+	mkdir -p $(ODIR)
 
 rootfs.img:
 	dd if=/dev/zero of=rootfs.img bs=1M count=32
@@ -55,13 +57,12 @@ rootfs.img:
 	echo 'start=2048, type=83, bootable' | sfdisk rootfs.img
 	mkfs.vfat --offset 2048 -F16 rootfs.img
 	mcopy -i rootfs.img@@1M kernel ::/
-	mmd -i rootfs.img@@1M boot 
+	mmd -i rootfs.img@@1M boot
 	mcopy -i rootfs.img@@1M grub.cfg ::/boot
 	@echo " -- BUILD COMPLETED SUCCESSFULLY --"
 
-
 run:
-	qemu-system-i386 -hda rootfs.img
+	qemu-system-i386 -hda rootfs.img -device i8042 -serial stdio
 
 debug:
 	./launch_qemu.sh
